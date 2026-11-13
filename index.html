@@ -1929,7 +1929,8 @@ tr:hover td{background:var(--bg3)}
     async start() {
       try {
         await Persistence.init();
-        try { await WetoSoftState.init(); } catch (stateError) { Logger.warn("Estado persistente: inicialização adiada:", stateError); }
+        await WetoSoftState.init();
+
         try { await SyncQueue.init(); } catch (_) {}
         try {
           const hydratedTarget = {};
@@ -1941,14 +1942,18 @@ tr:hover td{background:var(--bg3)}
         } catch (hydrateError) {
           Logger.warn("Persistência: hidratação do estado em memória adiada:", hydrateError);
         }
+
         await Database.put("system_metadata", {
           key: "app", version: WetoSoft.version, environment: WetoSoft.environment,
           schemaVersion: 17, updatedAt: new Date().toISOString()
         });
+
         Logger.info("Core local inicializado:", WetoSoft.version);
+        return true;
       } catch (error) {
         Logger.error("Falha ao inicializar o núcleo:", error);
         window.dispatchEvent(new CustomEvent("wetosoft:core-error", { detail: { code: error.code || "CORE_INIT_FAILED" } }));
+        return false;
       }
     }
   };
@@ -2055,7 +2060,23 @@ tr:hover td{background:var(--bg3)}
     WetoSoftState: { value: WetoSoftState, writable: false, configurable: false }
   });
 
-  window.addEventListener("DOMContentLoaded", () => App.start(), { once: true });
+  window.WetoSoftAppReady = new Promise(resolve => {
+    const startApp = async () => {
+      try {
+        const started = await App.start();
+        resolve(started === true && WetoSoftState._ready === true);
+      } catch (error) {
+        Logger.error("Falha no arranque do WetoSoft:", error);
+        resolve(false);
+      }
+    };
+
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', startApp, { once: true });
+    } else {
+      startApp();
+    }
+  });
 })();
 </script>
 <script id="wetosoft-business-transactions">
@@ -10399,7 +10420,21 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     isReady(){return this.state()===STATE.READY},
     requireReady(){if(!this.isReady())throw new Error('A aplicação ainda não está pronta para operações comerciais.');},
-    bootstrap(){Tenant.ensure();getInstallId();}
+    bootstrap(){
+      if(this._bootstrapPromise) return this._bootstrapPromise;
+
+      this._bootstrapPromise = (async()=>{
+        const initialized = await window.WetoSoftAppReady;
+        if(initialized !== true) {
+          throw new Error('A persistência local não está inicializada.');
+        }
+
+        Tenant.ensure();
+        getInstallId();
+      })();
+
+      return this._bootstrapPromise;
+    }
   };
 
   window.WetoSoftCore=Object.freeze({version:CORE_VERSION,STATE,Application,Tenant,Permissions,Session,Security,installationId:getInstallId});
@@ -10407,7 +10442,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)try{Session.touch()}catch(_){} });
   document.addEventListener('click',()=>{if(Session.get())Session.touch()},{passive:true});
   document.addEventListener('keydown',()=>{if(Session.get())Session.touch()},{passive:true});
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>Application.bootstrap(),{once:true});else Application.bootstrap();
+
 })();
 </script>
 <!-- WetoSoft Phase 5: License Gate + Local Authentication -->
@@ -10560,13 +10595,26 @@ window.WetoSoftLicenseConfig = Object.freeze({
     if(login)login.style.display='none'; if(app)app.classList.remove('visible'); if(gate)gate.style.display='flex';
     const e=document.getElementById('ws-license-err'); if(e)e.textContent=msg||'';
   }
-  function showLogin(){
-    if(CORE?.Application) CORE.Application.bootstrap();
+  async function showLogin(){
+    try {
+      if(CORE?.Application) await CORE.Application.bootstrap();
+    } catch(error) {
+      showLicense(error?.message || 'Não foi possível preparar a sessão local. Reinicie a aplicação e tente novamente.');
+      return;
+    }
+
     const gate=document.getElementById('ws-license-gate'), login=document.getElementById('screen-login');
     if(gate)gate.style.display='none'; if(login){login.style.display='flex';login.removeAttribute('hidden');login.setAttribute('aria-hidden','false');}
   }
   async function boot(){
+    const initialized = await window.WetoSoftAppReady;
+    if(initialized !== true){
+      showLicense('Não foi possível inicializar a persistência local. Reinicie a aplicação e tente novamente.');
+      return;
+    }
+
     await ensureSecureAdminBootstrap();
+
     const saved=(window.WetoSoftState ? window.WetoSoftState.get(LS_LICENSE,null) : localStorage.getItem(LS_LICENSE));
     if(!saved){showLicense('Esta instalação ainda não foi activada.');return;}
     try{await verifyLicense(saved);showLogin();}
