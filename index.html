@@ -1951,8 +1951,21 @@ tr:hover td{background:var(--bg3)}
         Logger.info("Core local inicializado:", WetoSoft.version);
         return true;
       } catch (error) {
+        const diagnostic = {
+          timestamp: new Date().toISOString(),
+          name: error?.name || "Error",
+          message: error?.message || String(error),
+          code: error?.code || "CORE_INIT_FAILED",
+          stack: error?.stack || null,
+          stage: "App.start"
+        };
+        try {
+          localStorage.setItem("wetosoft-startup-diagnostic", JSON.stringify(diagnostic));
+        } catch (storageError) {
+          Logger.error("Não foi possível guardar o diagnóstico:", storageError);
+        }
         Logger.error("Falha ao inicializar o núcleo:", error);
-        window.dispatchEvent(new CustomEvent("wetosoft:core-error", { detail: { code: error.code || "CORE_INIT_FAILED" } }));
+        window.dispatchEvent(new CustomEvent("wetosoft:core-error", { detail: { code: diagnostic.code } }));
         return false;
       }
     }
@@ -2063,9 +2076,48 @@ tr:hover td{background:var(--bg3)}
   window.WetoSoftAppReady = new Promise(resolve => {
     const startApp = async () => {
       try {
+        localStorage.removeItem("wetosoft-startup-diagnostic");
+      } catch (_) {}
+
+      try {
         const started = await App.start();
-        resolve(started === true && WetoSoftState._ready === true);
+        const ready = started === true && WetoSoftState._ready === true;
+
+        if (!ready) {
+          let existing = null;
+          try {
+            existing = JSON.parse(localStorage.getItem("wetosoft-startup-diagnostic") || "null");
+          } catch (_) {}
+
+          if (!existing) {
+            const diagnostic = {
+              timestamp: new Date().toISOString(),
+              name: "PersistenceInitializationError",
+              code: "CORE_INIT_NOT_READY",
+              message: "App.start() não confirmou a inicialização.",
+              started: started === true,
+              stateReady: WetoSoftState._ready === true,
+              stage: "WetoSoftAppReady"
+            };
+            try {
+              localStorage.setItem("wetosoft-startup-diagnostic", JSON.stringify(diagnostic));
+            } catch (_) {}
+          }
+        }
+
+        resolve(ready);
       } catch (error) {
+        const diagnostic = {
+          timestamp: new Date().toISOString(),
+          name: error?.name || "Error",
+          message: error?.message || String(error),
+          code: error?.code || "CORE_READY_FAILED",
+          stack: error?.stack || null,
+          stage: "WetoSoftAppReady"
+        };
+        try {
+          localStorage.setItem("wetosoft-startup-diagnostic", JSON.stringify(diagnostic));
+        } catch (_) {}
         Logger.error("Falha no arranque do WetoSoft:", error);
         resolve(false);
       }
@@ -10609,7 +10661,25 @@ window.WetoSoftLicenseConfig = Object.freeze({
   async function boot(){
     const initialized = await window.WetoSoftAppReady;
     if(initialized !== true){
-      showLicense('Não foi possível inicializar a persistência local. Reinicie a aplicação e tente novamente.');
+      let detail = "Não foi possível obter detalhes do diagnóstico.";
+      try {
+        const raw = localStorage.getItem("wetosoft-startup-diagnostic");
+        if (raw) {
+          const d = JSON.parse(raw);
+          detail = [
+            "Etapa: " + (d.stage || "desconhecida"),
+            "Erro: " + (d.name || "Error"),
+            "Código: " + (d.code || "CORE_INIT_FAILED"),
+            "Mensagem: " + (d.message || "Sem mensagem"),
+            "App.start(): " + String(d.started),
+            "WetoSoftState._ready: " + String(d.stateReady),
+            "Stack: " + (d.stack || "Não disponível")
+          ].join("\n");
+        }
+      } catch (error) {
+        detail = "Erro ao ler o diagnóstico: " + (error?.message || String(error));
+      }
+      showLicense("DIAGNÓSTICO DE PERSISTÊNCIA LOCAL\n" + detail);
       return;
     }
 
