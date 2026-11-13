@@ -10429,14 +10429,14 @@ document.addEventListener('DOMContentLoaded', () => {
 <script id="wetosoft-license-public-config">
 /* Configuração pública do licenciamento. Nunca colocar aqui a chave privada. */
 window.WetoSoftLicenseConfig = Object.freeze({
-  apiBase: 'https://wetosoft-licensing-server.netlify.app/api/v1',
-  issuer: 'https://wetosoft-licensing-server.netlify.app',
-  audience: 'wetosoft-client',
+  apiBase: 'https://wetosoft-licensing-test.netlify.app/api/v1',
+  issuer: 'urn:wetosoft:licensing-server',
+  audience: 'urn:wetosoft:client',
   publicJwk: Object.freeze({
     kty: 'OKP',
     alg: 'EdDSA',
     crv: 'Ed25519',
-    x: 'fDc4MTxFBErYGlIDE6sYhZJRh9HD_4NKSrf4__4RtBg'
+    x: 'PUXvAONHwbPNOpwsnAoe6odyWq3d5QeQacptX3BJREA'
   })
 });
 </script>
@@ -10581,6 +10581,9 @@ window.WetoSoftLicenseConfig = Object.freeze({
       ACTIVATION_CODE_ALREADY_USED:'Este código já foi utilizado noutra instalação. Contacte o suporte WetoSoft.',
       LICENSE_NOT_ACTIVE:'A licença não está ativa ou já expirou. Contacte o suporte WetoSoft.',
       LICENSE_SIGNING_NOT_CONFIGURED:'O serviço de licenciamento está temporariamente mal configurado. Contacte o suporte.',
+      LICENSE_PRIVATE_JWK_INVALID:'O serviço de licenciamento apresenta uma configuração inválida. Contacte o suporte.',
+      LICENSE_EXPIRED:'A licença expirou. Contacte o suporte WetoSoft.',
+      INTERNAL_ERROR:'Ocorreu um erro interno no serviço de licenciamento. Tente novamente mais tarde.',
       NOT_FOUND:'O endpoint de ativação não foi encontrado. Verifique a publicação do servidor.'
     };
     return messages[code] || 'Não foi possível ativar a licença ('+String(code||'erro desconhecido')+').';
